@@ -3,7 +3,8 @@ begin;
 set local statement_timeout='30s';
 insert into auth.users(id,email) values
  ('aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa1','habit-test-a@example.invalid'),
- ('bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbb2','habit-test-b@example.invalid');
+ ('bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbb2','habit-test-b@example.invalid'),
+ ('dddddddd-dddd-4ddd-8ddd-ddddddddddd4','habit-test-zone@example.invalid');
 select set_config('request.jwt.claims','{"sub":"aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa1","role":"authenticated"}',true);
 set local role authenticated;
 insert into public.profiles(id,timezone) values('aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa1','Asia/Ho_Chi_Minh');
@@ -39,13 +40,27 @@ end $$;
 reset role;
 select set_config('request.jwt.claims','{"sub":"bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbb2","role":"authenticated"}',true);
 set local role authenticated;
-insert into public.profiles(id,timezone) values('bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbb2','America/New_York');
+insert into public.profiles(id,timezone) values('bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbb2','Pacific/Honolulu');
+select set_config('habit_test.west_day',public.current_local_date()::text,true);
 do $$ begin
  if exists(select 1 from public.habits) then raise exception 'Cross-owner read leak';end if;
  if exists(select 1 from public.habit_activity_days) then raise exception 'Cross-owner activity leak';end if;
  if exists(select 1 from public.habit_stats(null)) then raise exception 'Stats owner leak';end if;
  begin insert into public.habits(user_id,title) values('aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa1','Attack');raise exception 'Cross-owner insert allowed';exception when insufficient_privilege then null;end;
  begin perform public.run_daily_summaries(null,200);raise exception 'Worker RPC allowed';exception when insufficient_privilege then null;end;
+end $$;
+reset role;
+-- These zones are exactly 24 hours apart: the actual app clock must return
+-- different calendar dates regardless of when this test executes.
+select set_config('request.jwt.claims','{"sub":"dddddddd-dddd-4ddd-8ddd-ddddddddddd4","role":"authenticated"}',true);
+set local role authenticated;
+insert into public.profiles(id,timezone) values('dddddddd-dddd-4ddd-8ddd-ddddddddddd4','Pacific/Kiritimati');
+insert into public.habits(user_id,title) values('dddddddd-dddd-4ddd-8ddd-ddddddddddd4','Timezone boundary');
+insert into public.habit_checkins(habit_id,user_id) select id,auth.uid() from public.habits where title='Timezone boundary';
+do $$ declare d date:=public.current_local_date();begin
+ if d<>current_setting('habit_test.west_day')::date+1 then raise exception 'Calendar day incorrectly uses UTC/browser timezone';end if;
+ if (select checkin_date from public.habit_checkins)<>d then raise exception 'Checkin date ignores account timezone';end if;
+ if (select current_streak from public.habit_stats(null))<>1 then raise exception 'Streak ignores local day boundary';end if;
 end $$;
 reset role;
 -- Trusted fixture setup only: create historical dates to verify the actual SQL streak engine.
@@ -91,7 +106,7 @@ do $$ declare job jsonb; cursor_value jsonb:=null; batches integer:=0; expected 
  if (select count(*) from public.daily_summaries where user_id='aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa1')<>expected then raise exception 'Old hole not repaired';end if;
 end $$;
 reset role;
-delete from auth.users where id in ('aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa1','bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbb2');
+delete from auth.users where id in ('aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa1','bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbb2','dddddddd-dddd-4ddd-8ddd-ddddddddddd4');
 do $$ begin if exists(select 1 from public.habit_checkins where user_id='aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa1') then raise exception 'Account cascade cleanup failed';end if;end $$;
 rollback;
 select 'PASS: ownership, immutable dates, pause/resume, streaks, archives, summary replay and gap repair (fixtures rolled back)' as verification;
