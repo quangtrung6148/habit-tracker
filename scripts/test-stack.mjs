@@ -289,6 +289,13 @@ async function testBrowser(chromium, expect) {
   dialog = page.getByRole('dialog'); await expect(dialog.locator('.history-list > div')).toHaveCount(1);
   page.once('dialog', prompt => prompt.accept());
   await dialog.getByRole('button', { name: 'Xóa thói quen', exact: true }).click();
+  // Archived detail intentionally stays open so the user can inspect retained history.
+  await expect(dialog.getByText('Đã xóa · Lưu giữ lịch sử', { exact: true })).toBeVisible();
+  await expect(dialog.locator('.history-list > div')).toHaveCount(1);
+  await expect(dialog.getByRole('button', { name: 'Chỉnh sửa', exact: true })).toHaveCount(0);
+  await expect(dialog.getByRole('button', { name: 'Xóa thói quen', exact: true })).toHaveCount(0);
+  await dialog.getByRole('button', { name: 'Đóng', exact: true }).click();
+  await expect(dialog).toHaveCount(0);
   await expect(page.getByRole('button', { name: `Chi tiết ${renamed}`, exact: true })).toHaveCount(0);
   await page.setViewportSize({ width: 375, height: 812 });
   await page.getByRole('navigation', { name: 'Điều hướng trên điện thoại', exact: true }).getByRole('button', { name: 'Tổng quan', exact: true }).click();
