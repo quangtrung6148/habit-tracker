@@ -78,6 +78,24 @@ jobs:
         run: npx playwright install --with-deps chromium
       - name: Verify real Auth, Express, RLS and mobile browser
         run: node scripts/test-stack.mjs
+      - name: Verify separate desktop and mobile smoke scenarios
+        shell: bash
+        run: |
+          setsid npm run start --prefix frontend > /tmp/habit-frontend-smoke.log 2>&1 &
+          frontend_pid=$!
+          trap 'kill -- -"$frontend_pid" 2>/dev/null || true' EXIT
+          node --input-type=module <<'NODE'
+          let ready = false;
+          for (let attempt = 0; attempt < 60; attempt++) {
+            try {
+              const response = await fetch('http://localhost:3000/login', { signal: AbortSignal.timeout(2000) });
+              if (response.ok) { ready = true; break; }
+            } catch {}
+            await new Promise(resolve => setTimeout(resolve, 1000));
+          }
+          if (!ready) throw new Error('Frontend smoke server did not become ready');
+          NODE
+          npm run test:e2e --prefix frontend
       - name: Build backend container
         run: docker build --tag habit-backend:ci backend
       - name: Build frontend container
@@ -85,10 +103,74 @@ jobs:
         run: >-
           docker build --tag habit-frontend:ci
           --build-arg NEXT_PUBLIC_SUPABASE_URL="$NEXT_PUBLIC_SUPABASE_URL"
+          --build-arg NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY="$NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY"
           --build-arg NEXT_PUBLIC_SUPABASE_ANON_KEY="$NEXT_PUBLIC_SUPABASE_ANON_KEY"
           frontend
       - name: Build worker container
         run: docker build --tag habit-worker:ci worker
+      - name: Prepare local-only Compose fixture configuration
+        id: compose-config
+        shell: bash
+        run: |
+          node --input-type=module <<'NODE'
+          import { writeFileSync } from 'node:fs';
+          const env = process.env;
+          const write = (path, values) => writeFileSync(path, Object.entries(values).map(([key, value]) => `${key}=${value}\n`).join(''));
+          write('.env', {
+            NEXT_PUBLIC_SUPABASE_URL: 'http://host.docker.internal:54321',
+            NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY: env.SUPABASE_PUBLISHABLE_KEY,
+          });
+          write('backend/.env.local', {
+            SUPABASE_URL: 'http://host.docker.internal:54321',
+            SUPABASE_PUBLISHABLE_KEY: env.SUPABASE_PUBLISHABLE_KEY,
+            SUPABASE_SERVICE_ROLE_KEY: env.SUPABASE_SERVICE_ROLE_KEY,
+            SERVICE_API_KEY: env.SERVICE_API_KEY,
+            FRONTEND_URL: 'http://localhost:3000',
+          });
+          write('frontend/.env.local', {
+            NEXT_PUBLIC_SUPABASE_URL: 'http://host.docker.internal:54321',
+            NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY: env.SUPABASE_PUBLISHABLE_KEY,
+            APP_URL: 'http://localhost:3000',
+          });
+          write('worker/.env.local', { SERVICE_API_KEY: env.SERVICE_API_KEY });
+          const host = { extra_hosts: ['host.docker.internal:host-gateway'] };
+          const frontend = {
+            ...host,
+            build: { args: { NEXT_PUBLIC_SUPABASE_URL: 'http://host.docker.internal:54321' } },
+            environment: { NEXT_PUBLIC_SUPABASE_URL: 'http://host.docker.internal:54321' },
+          };
+          writeFileSync('/tmp/habit-compose-ci.json', JSON.stringify({ services: { backend: host, frontend } }));
+          NODE
+          docker compose -f docker-compose.yml -f /tmp/habit-compose-ci.json config --quiet
+      - name: Start and verify all three Compose services
+        shell: bash
+        run: |
+          docker compose -f docker-compose.yml -f /tmp/habit-compose-ci.json up --detach --build --wait --wait-timeout 180
+          node --input-type=module <<'NODE'
+          import { execFileSync } from 'node:child_process';
+          const health = await fetch('http://localhost:5000/health', { signal: AbortSignal.timeout(5000) });
+          if (!health.ok || !(await health.json()).data.worker_configured) throw new Error('Compose backend failed health or worker configuration');
+          let frontendReady = false;
+          for (let attempt = 0; attempt < 60; attempt++) {
+            try {
+              if ((await fetch('http://localhost:3000/login', { signal: AbortSignal.timeout(2000) })).ok) { frontendReady = true; break; }
+            } catch {}
+            await new Promise(resolve => setTimeout(resolve, 1000));
+          }
+          if (!frontendReady) throw new Error('Compose frontend did not become ready');
+          let workerComplete = false;
+          for (let attempt = 0; attempt < 120; attempt++) {
+            const logs = execFileSync('docker', ['compose', '-f', 'docker-compose.yml', '-f', '/tmp/habit-compose-ci.json', 'logs', '--no-color', 'worker'], { encoding: 'utf8' });
+            if (logs.includes('"event":"summary_complete"')) { workerComplete = true; break; }
+            if (logs.includes('"event":"summary_failed"')) throw new Error('Compose worker failed its actual summary request');
+            await new Promise(resolve => setTimeout(resolve, 1000));
+          }
+          if (!workerComplete) throw new Error('Compose worker did not complete its actual summary request');
+          console.log('Compose frontend, backend health and actual worker-to-backend-to-database run passed.');
+          NODE
+      - name: Stop Compose services
+        if: ${{ always() && steps.compose-config.outcome == 'success' }}
+        run: docker compose -f docker-compose.yml -f /tmp/habit-compose-ci.json down --volumes
       - name: Stop local Supabase
         if: always()
         run: npx --yes supabase@2.121.0 stop --no-backup

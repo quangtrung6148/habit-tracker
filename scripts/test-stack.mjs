@@ -119,7 +119,10 @@ async function rememberBrowserUser() {
   throw new Error('Browser signup did not create the expected local user.');
 }
 function confirmationLink(html) {
-  const links = [...html.matchAll(/href\s*=\s*["']([^"']+)["']/gi)].map(match => match[1].replaceAll('&amp;', '&').replaceAll('&#x3D;', '=').replaceAll('&#61;', '='));
+  const decode = value => value.replaceAll('&amp;', '&').replaceAll('&#x3D;', '=').replaceAll('&#61;', '=');
+  const links = [...html.matchAll(/href\s*=\s*["']([^"']+)["']/gi)].map(match => decode(match[1]));
+  // Plain-text email parts contain bare URLs instead of HTML anchors.
+  links.push(...(html.match(/https?:\/\/[^\s<>"']+/gi) || []).map(decode));
   for (const candidate of links) {
     let url;
     try { url = new URL(candidate); } catch { continue; }
@@ -133,30 +136,46 @@ function confirmationLink(html) {
 async function emailConfirmation() {
   const deadline = Date.now() + 45_000;
   const mailbox = emails.browser.split('@')[0];
+  const diagnostics = { provider: 'unknown', listStatus: 0, totalMessages: 0, matchedMessages: 0, detailStatus: 0, htmlBytes: 0, textBytes: 0 };
   while (Date.now() < deadline) {
     // Supabase CLI currently exposes Mailpit; keep compatibility with older Inbucket images.
     const listing = await http(`${mailUrl}/api/v1/messages`);
+    diagnostics.listStatus = listing.status;
     if (listing.status === 200 && Array.isArray(listing.data?.messages)) {
-      const message = listing.data.messages.find(item => JSON.stringify(item.To || item.to || []).toLowerCase().includes(emails.browser));
+      diagnostics.provider = 'mailpit'; diagnostics.totalMessages = listing.data.messages.length;
+      const matches = listing.data.messages.filter(item => (item.To || item.to || []).some(recipient => String(recipient.Address || recipient.Email || recipient.address || recipient.email || recipient).toLowerCase() === emails.browser));
+      diagnostics.matchedMessages = matches.length;
+      const message = matches[0];
       if (message) {
         const messageId = message.ID || message.id;
-        const body = await http(`${mailUrl}/api/v1/message/${encodeURIComponent(messageId)}/html`);
-        const link = confirmationLink(body.text);
+        // Mailpit's documented message endpoint returns JSON with HTML and Text parts.
+        // https://mailpit.axllent.org/docs/api-v1/ (GET /api/v1/message/{ID})
+        const body = await http(`${mailUrl}/api/v1/message/${encodeURIComponent(messageId)}`);
+        diagnostics.detailStatus = body.status;
+        const html = typeof body.data?.HTML === 'string' ? body.data.HTML : '';
+        const text = typeof body.data?.Text === 'string' ? body.data.Text : '';
+        diagnostics.htmlBytes = html.length; diagnostics.textBytes = text.length;
+        const link = confirmationLink(html) || confirmationLink(text);
         if (link) return link;
       }
     } else {
       const inbox = await http(`${mailUrl}/api/v1/mailbox/${encodeURIComponent(mailbox)}`);
       if (inbox.status === 200 && Array.isArray(inbox.data)) {
+        diagnostics.provider = 'inbucket'; diagnostics.listStatus = inbox.status; diagnostics.totalMessages = inbox.data.length; diagnostics.matchedMessages = inbox.data.length;
         for (const message of inbox.data) {
           const body = await http(`${mailUrl}/api/v1/mailbox/${encodeURIComponent(mailbox)}/${encodeURIComponent(message.id)}`);
-          const link = confirmationLink(body.data?.body?.html || body.data?.body?.text || '');
+          diagnostics.detailStatus = body.status;
+          const html = body.data?.body?.html || ''; const text = body.data?.body?.text || '';
+          diagnostics.htmlBytes = html.length; diagnostics.textBytes = text.length;
+          const link = confirmationLink(html) || confirmationLink(text);
           if (link) return link;
         }
       }
     }
     await delay(500);
   }
-  throw new Error('No local confirmation email arrived. Check auth.email.enable_confirmations, Mailpit, and local redirect URLs.');
+  // Metadata only: never expose recipients, message bodies, or authentication links.
+  throw new Error(`Local confirmation email could not be read: ${JSON.stringify(diagnostics)}. Check local SMTP delivery and Mailpit API compatibility.`);
 }
 
 async function testApi() {
