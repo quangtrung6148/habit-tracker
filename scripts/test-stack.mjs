@@ -306,7 +306,7 @@ async function testBrowser(chromium, expect) {
   await expect(page).toHaveURL(/\/login$/);
   await page.getByLabel('Email', { exact: true }).fill(emails.browser); await page.getByLabel('Mật khẩu', { exact: true }).fill('Incorrect-password-123!');
   await page.getByRole('button', { name: 'Đăng nhập', exact: true }).click();
-  await expect(page.getByRole('alert')).toBeVisible(); await expect(page).toHaveURL(/\/login$/);
+  await expect(page.getByRole('alert').filter({ hasText: 'Email hoặc mật khẩu' })).toBeVisible(); await expect(page).toHaveURL(/\/login$/);
   await page.getByLabel('Mật khẩu', { exact: true }).fill(password);
   await page.getByRole('button', { name: 'Đăng nhập', exact: true }).click();
   await expect(page.getByRole('button', { name: 'Thêm thói quen', exact: true })).toBeVisible();
