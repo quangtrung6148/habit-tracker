@@ -1,0 +1,12 @@
+**/node_modules
+**/.next
+**/dist
+**/.env.local
+**/.env.*.local
+.git
+.tools
+_bmad
+_bmad-output
+.agents
+**/test-results
+**/playwright-report

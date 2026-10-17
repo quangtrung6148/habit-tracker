@@ -1,0 +1,42 @@
+services:
+  backend:
+    build: ./backend
+    env_file: ./backend/.env.local
+    environment:
+      NODE_ENV: development
+      PORT: 5000
+      FRONTEND_URL: http://localhost:3000
+    ports:
+      - "5000:5000"
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:5000/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+  frontend:
+    build:
+      context: ./frontend
+      args:
+        NEXT_PUBLIC_SUPABASE_URL: ${NEXT_PUBLIC_SUPABASE_URL:?Set root .env from .env.example}
+        NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY: ${NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY:?Set publishable key}
+    env_file: ./frontend/.env.local
+    environment:
+      API_INTERNAL_URL: http://backend:5000
+      APP_URL: http://localhost:3000
+      LOCAL_DOCKER: "true"
+      NEXT_PUBLIC_API_URL: http://localhost:5000
+    ports:
+      - "3000:3000"
+    depends_on:
+      backend:
+        condition: service_healthy
+  worker:
+    build: ./worker
+    env_file: ./worker/.env.local
+    environment:
+      NODE_ENV: development
+      BACKEND_URL: http://backend:5000
+    depends_on:
+      backend:
+        condition: service_healthy
+    init: true

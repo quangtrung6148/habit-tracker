@@ -1,0 +1,94 @@
+name: Verify Habit Tracker
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: verify-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      NEXT_TELEMETRY_DISABLED: '1'
+      SUPABASE_DB_CONTAINER: supabase_db_habit-tracker
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: |
+            frontend/package-lock.json
+            backend/package-lock.json
+            worker/package-lock.json
+      - run: npm run install:apps
+      - run: npm run check:secrets
+      - run: npm test
+      - name: Start isolated local Supabase with migrations
+        shell: bash
+        run: |
+          npx --yes supabase@2.121.0 start --exclude studio,imgproxy,edge-runtime,logflare,vector,supavisor > /tmp/habit-supabase-start.log 2>&1 || {
+            echo 'Local Supabase failed to start. No remote project was contacted.'
+            exit 1
+          }
+      - name: Export local fixture keys without printing credentials
+        shell: bash
+        run: |
+          node --input-type=module <<'NODE'
+          import { spawnSync } from 'node:child_process';
+          import { appendFileSync } from 'node:fs';
+          const result = spawnSync('npx', ['--yes', 'supabase@2.121.0', 'status', '--output', 'env'], { encoding: 'utf8' });
+          if (result.status !== 0) throw new Error('Cannot inspect local Supabase');
+          const values = {};
+          for (const line of result.stdout.split('\n')) {
+            const match = /^([A-Z_]+)="([^"]*)"\r?$/.exec(line);
+            if (match) values[match[1]] = match[2];
+          }
+          if (!values.API_URL || !values.ANON_KEY || !values.SERVICE_ROLE_KEY) throw new Error('Missing local fixture configuration');
+          for (const key of [values.ANON_KEY, values.SERVICE_ROLE_KEY]) process.stdout.write(`::add-mask::${key}\n`);
+          const exported = {
+            SUPABASE_URL: values.API_URL,
+            SUPABASE_PUBLISHABLE_KEY: values.ANON_KEY,
+            SUPABASE_SERVICE_ROLE_KEY: values.SERVICE_ROLE_KEY,
+            NEXT_PUBLIC_SUPABASE_URL: values.API_URL,
+            NEXT_PUBLIC_SUPABASE_ANON_KEY: values.ANON_KEY,
+            NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY: values.ANON_KEY,
+            SERVICE_API_KEY: 'local-ci-fixture-service-key-not-for-production',
+            APP_URL: 'http://localhost:3000',
+            FRONTEND_URL: 'http://localhost:3000',
+            API_INTERNAL_URL: 'http://localhost:5000',
+          };
+          appendFileSync(process.env.GITHUB_ENV, Object.entries(exported).map(([key, value]) => `${key}=${value}\n`).join(''));
+          NODE
+      - run: npm run typecheck
+      - run: npm run build
+      - run: npm run test:database
+      - name: Install browser for complete local flow
+        working-directory: frontend
+        run: npx playwright install --with-deps chromium
+      - name: Verify real Auth, Express, RLS and mobile browser
+        run: node scripts/test-stack.mjs
+      - name: Build backend container
+        run: docker build --tag habit-backend:ci backend
+      - name: Build frontend container
+        shell: bash
+        run: >-
+          docker build --tag habit-frontend:ci
+          --build-arg NEXT_PUBLIC_SUPABASE_URL="$NEXT_PUBLIC_SUPABASE_URL"
+          --build-arg NEXT_PUBLIC_SUPABASE_ANON_KEY="$NEXT_PUBLIC_SUPABASE_ANON_KEY"
+          frontend
+      - name: Build worker container
+        run: docker build --tag habit-worker:ci worker
+      - name: Stop local Supabase
+        if: always()
+        run: npx --yes supabase@2.121.0 stop --no-backup
