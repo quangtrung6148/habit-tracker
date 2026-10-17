@@ -6,6 +6,8 @@ Ban đầu repository chưa có BMAD; vòng xem xét ban đầu chỉ là mô ph
 
 Các agent đọc SKILL.md và cấu hình persona/config liên quan trước hai vòng thảo luận mới. Lúc kích hoạt PM, `uv` chưa nằm trên PATH nên lệnh resolver thất bại; PM dùng fallback đọc `customize.toml`, `_bmad/config.toml` và các lớp override (không có override PM). Sau đó runtime uv được cài tại `.tools`; resolver config đã chạy thành công với cache trong workspace, xác nhận người dùng Trung, ngôn ngữ trao đổi và tài liệu là tiếng Việt. Không tuyên bố các workflow PRD/architecture tự động đã chạy nếu chỉ đọc skill và thảo luận.
 
+Để tái tạo phần cài đặt, dùng installer được pin: `npx bmad-method@6.12.4 install --modules bmm --tools codex`. Các thư mục generated `_bmad`/`.agents` được ignore khỏi source public; quyết định và bằng chứng thảo luận được giữ trong `docs`. Tham số project/user/language được cấu hình theo môi trường khi installer yêu cầu. Runtime/credential/OIDC local không nằm trong repository công khai.
+
 ## Vòng 1 — đề xuất của ba agent
 
 | Vai trò | Đề xuất |
@@ -33,6 +35,6 @@ Ba agent thống nhất:
 4. Dashboard live bảy ngày độc lập summaries. Worker làm bù mọi ngày đã đóng còn thiếu, refresh bảy ngày đã đóng gần nhất, cursor batch và upsert idempotent.
 5. Worker có timeout/retry hữu hạn, HTTPS production, hủy SIGTERM và log an toàn; không Redis/queue service/cron trả phí hoặc anti-sleep ping.
 
-## Bằng chứng cần hoàn tất
+## Bằng chứng thực thi
 
-Hai vòng thảo luận installed-skill đã thực hiện trước khi agent bắt đầu code. Việc build/test/runtime/deploy phải ghi theo kết quả lệnh thực tế trong deployment-plan; nội dung thảo luận không thay thế bằng chứng kiểm chứng.
+Hai vòng thảo luận installed-skill đã thực hiện trước khi agent bắt đầu code. [CI cuối](https://github.com/quangtrung6148/habit-tracker/actions/runs/39037069363) đã qua build/test, SQL/RLS/Auth/browser và ba container/Compose runtime; frontend Vercel và backend Render đã qua public smoke. [Deployment-plan](deployment-plan.md) ghi kết quả và những bước production còn chờ cấu hình Dashboard. Nội dung thảo luận không thay thế bằng chứng kiểm chứng.

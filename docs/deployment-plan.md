@@ -2,11 +2,31 @@
 
 ## Trạng thái
 
-Tài liệu này phân biệt source/config đã chuẩn bị với thao tác runtime và triển khai đã kiểm chứng. Không coi migrations, Auth, RLS, Docker hoặc deployment đã thành công chỉ từ việc tồn tại file. Kết quả lệnh thực tế sẽ được bổ sung khi hoàn tất kiểm thử; chưa có URL production được xác nhận trong tài liệu này.
+Tài liệu này phân biệt source/config đã chuẩn bị với thao tác runtime và triển khai đã kiểm chứng. Không coi migrations, Auth, RLS, Docker hoặc deployment đã thành công chỉ từ việc tồn tại file.
 
 Đã chạy tại môi trường phát triển ngày 17/10/2026: `npm --prefix worker run typecheck`, `npm --prefix worker run build` và `npm --prefix worker test` đều exit 0; **10/10 worker tests** qua. Các test kiểm tra contract/cursor, network/503 retry và jitter, 401 không retry, hết retry, cursor lặp, response sai, timeout, hủy request, chờ giữa các lượt không chạy chồng, config HTTPS. Đây là test fetch giả và clock/sleep inject, chưa chứng minh internal API hoặc dịch vụ production hoạt động.
 
-Root agent đã xác nhận migrations áp dụng trên project thật, SQL integration chạy trong transaction rollback thành công và Supabase security advisors không có cảnh báo; **25 backend tests** qua. Các probe rollback không để lại tài khoản/dữ liệu kiểm thử. Repository GitHub public đã tạo; push, CI Linux, Auth email và deployment runtime chỉ đánh dấu hoàn tất sau khi có kết quả tương ứng.
+Root agent đã xác nhận migrations áp dụng trên project thật, SQL integration chạy trong transaction rollback thành công và Supabase security advisors không có cảnh báo; **26 backend tests**, **10 worker tests**, **3 Playwright smoke scenarios**, frontend build/typecheck qua. Các probe rollback không để lại tài khoản/dữ liệu kiểm thử. Source đã push lên [repository public](https://github.com/quangtrung6148/habit-tracker).
+
+Kiểm tra database sau rollback: users/habits/check-ins đều 0, mọi bảng ứng dụng bật RLS; security advisors 0 cảnh báo. Performance advisors chỉ có INFO unused index trên database mới, không còn missing foreign-key index.
+
+SQL integration có kiểm tra đường đổi ngày quốc tế tất định: hai tài khoản `Pacific/Honolulu` và `Pacific/Kiritimati` chênh đúng 24 giờ, nên ngày nghiệp vụ khác nhau ở mọi thời điểm chạy. Test gọi RPC thực của ứng dụng và kiểm tra ngày check-in lưu cùng streak theo từng tài khoản; toàn bộ SQL suite đã chạy rollback thành công trên project thật.
+
+[CI cuối cùng](https://github.com/quangtrung6148/habit-tracker/actions/runs/39037069363) tại commit `cf0ceb4d0b533260e32e56e55232d6fbdc52b102` đã **SUCCESS toàn bộ**: install/secret scan/unit tests, typecheck/build ba ứng dụng; Supabase local migrations và SQL integration; JWT thật, ownership, concurrent check-in, quy tắc ngày, summary replay; browser đăng ký→email xác nhận thật qua Mailpit→profile→habit CRUD/check-in/undo/pause/resume/lịch sử/xóa→mobile→logout/login; ba smoke scenarios; build ba Docker image; Compose config/up frontend/backend/worker, `/health`, login page và worker thực sự gọi backend→database hoàn thành summary. Cleanup Compose và Supabase đều thành công.
+
+Các email/tài khoản integration chỉ ở Supabase local trong CI, không phải người dùng production. Harness giữ đúng hành vi chi tiết archived sau xóa và đóng modal bằng nút trước khi điều hướng; không dùng force-click để che lỗi.
+
+## Production đã kiểm chứng
+
+- Vercel deployment `dpl_5Vm7fAJxVe89J7VmYiP7W84jKn11` READY tại [habit-tracker-lime-xi.vercel.app](https://habit-tracker-lime-xi.vercel.app).
+- Render Free Web Service `srv-db9ncqbbc2fs73chtdbg`, deployment `dep-db9nefijnfac73cuss7g` LIVE tại [habit-tracker-api-0lnr.onrender.com](https://habit-tracker-api-0lnr.onrender.com/health).
+- Browser production: login page 200, nhập sai mật khẩu trả 400 qua Auth Vercel→Supabase, không overflow mobile hoặc pageerror; BFF Origin guard trả 403.
+- API production: `/health` 200 và `worker_configured:false`; anonymous protected endpoint 401. Worker production chưa được bật, không coi đây là job summary đã chạy.
+- Chưa kiểm chứng production: đăng ký/xác nhận email bằng SMTP thật, toàn bộ luồng tài khoản đã đăng nhập và scheduled worker với secrets thật.
+
+Render được tạo qua API tool chưa hỗ trợ rootDir/healthCheckPath: service thực tế dùng root repository, build `npm ci --prefix backend && npm run build --prefix backend` với `NPM_CONFIG_INCLUDE=dev`, start `npm start --prefix backend`; provider dùng TCP health, đồng thời `/health` đã probe 200. `render.yaml` là cấu hình chuẩn root `backend`, build include dev và `/health`, đã chuẩn bị nhưng chưa được attach/sync vào service thực tế. Không nói service đang do Blueprint quản lý.
+
+Vercel kết nối GitHub tự động thất bại vì integration chưa có quyền repository. Deployment source bằng CLI đã thành công và là deployment đang public. Cần cấp quyền repository cho integration để các push sau tự deploy; không coi auto deploy đã bật.
 
 ## Supabase
 
@@ -17,7 +37,7 @@ Auth cần cấu hình Site URL, callback local/production, email confirmation v
 ## GitHub, Vercel và Render
 
 1. Tạo repository public khi có quyền tài khoản; kiểm tra secrets trước push và cấu hình CI dùng lockfile từng ứng dụng.
-2. Render Free Web Service root `backend`, `npm ci && npm run build`, start `npm start`, health `/health`, bind `0.0.0.0:$PORT`. `FRONTEND_URL` là origin Vercel cụ thể, không wildcard; trust proxy theo ingress thực tế.
+2. Khi triển khai bằng cấu hình chuẩn: Render Free Web Service root `backend`, `npm ci --include=dev && npm run build`, start `npm start`, health `/health`, bind `0.0.0.0:$PORT`. `FRONTEND_URL` là origin Vercel cụ thể, không wildcard; trust proxy theo ingress thực tế. Service hiện tại dùng lệnh prefix từ root như đã ghi phía trên.
 3. Vercel root `frontend`, build Next.js. Đặt `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` (hoặc `NEXT_PUBLIC_SUPABASE_ANON_KEY` tương thích cũ), server-only `API_INTERNAL_URL=https://<render-host>` và `APP_URL=https://<vercel-host>`. Không đưa service-role/service key vào biến public. `LOCAL_DOCKER` chỉ bật cho Docker local, không bật production.
 4. Backend cần `SUPABASE_URL`, `SUPABASE_PUBLISHABLE_KEY`, `FRONTEND_URL`, `NODE_ENV=production`, khóa `SUPABASE_SERVICE_ROLE_KEY` và `SERVICE_API_KEY` để bật internal summary. Khóa service ngẫu nhiên ít nhất 32 ký tự và giống phía worker.
 5. Sửa Supabase allowed redirects theo domain thật, kiểm tra callback và đăng xuất, rồi chạy E2E.
@@ -28,7 +48,7 @@ Không tạo paid instance, paid cron hay paid worker. Không tự nâng plan kh
 
 GitHub Actions chạy phút 23 mỗi giờ và hỗ trợ workflow_dispatch. Chỉ bật khi repository variable `DAILY_SUMMARY_ENABLED=true`; mặc định chưa chạy. Checkout → Node22 → `npm ci` trong worker → build → `node dist/index.js --once`. Job concurrency một nhóm, không cancel lượt đang chạy; giới hạn 30 phút và quyền repository `contents:read`. Repository variable `BACKEND_URL` phải là HTTPS origin, repository secret `SERVICE_API_KEY` riêng; không echo khóa.
 
-CI trong `.github/workflows/ci.yml` cài ba ứng dụng từ lockfile, secret scan, test/typecheck/build; khởi động Supabase local CLI 2.121.0 với migrations, SQL integration và kiểm thử Auth/API/browser thật, sau đó build ba Docker image. CI dùng khóa fixture local, mask trước khi xuất môi trường, không dùng khóa project thật. Workflow đã viết không đồng nghĩa đã chạy thành công trên GitHub.
+CI trong `.github/workflows/ci.yml` cài ba ứng dụng từ lockfile, secret scan, test/typecheck/build; khởi động Supabase local CLI 2.121.0 với migrations, SQL integration và kiểm thử Auth/API/browser thật, sau đó build ba Docker image và chạy Compose. CI dùng khóa fixture local, mask trước khi xuất môi trường, không dùng khóa project thật. Run thành công được dẫn ở phần Trạng thái.
 
 Worker cố gắng tối đa ba lần cho mỗi request transient, mỗi attempt timeout 120 giây; delay 1/2 giây cộng jitter dưới 500ms. Endpoint chạy batch100 và trả cursor. Cold start hoặc Actions trễ có thể làm một lượt chậm/thất bại; lượt kế tiếp bắt đầu từ đầu, upsert an toàn và làm bù. Không dùng lịch này để hứa thống kê đúng phút hoặc giữ Render luôn thức. Scheduled workflow trên public repo có giới hạn/điều kiện hoạt động của nhà cung cấp; theo dõi Actions và chạy thủ công nếu cần.
 
@@ -36,22 +56,22 @@ Worker cố gắng tối đa ba lần cho mỗi request transient, mỗi attempt
 
 | Nhóm | Kiểm tra | Bằng chứng yêu cầu |
 |---|---|---|
-| Build | Typecheck/build frontend, backend, worker | Worker đã qua; frontend/backend chờ cập nhật kết quả tổng thể. |
-| Auth | Signup, confirm, login, wrong password, refresh, logout | E2E local/production theo cấu hình SMTP thật. |
-| Ownership | A không truy cập B qua Express và REST | Hai JWT thật; ghi mã status, không ghi token. |
-| Habits | Create/edit/soft-delete, validation, pause/resume | Test API + browser; ngày lịch sử giữ nguyên. |
-| Check-in | Duplicate/concurrent, undo, today-only, streak gap | DB integration + test ngày cố định; midnight khác timezone browser. |
-| Dashboard | Đủ bảy ngày, mẫu số theo lịch sử, zero state | So sánh với dữ liệu nguồn đã biết. |
-| Worker | Success/retry/401/timeout/cursor/SIGTERM | Automated worker tests và internal API integration. |
-| SQL | Unique, RLS, grants, DATE và composite ownership | Áp migration + SQL/REST probes trực tiếp. |
-| Docker | Compose build/start, health, service networking | Docker runtime thật; `compose config` chỉ chứng minh cấu hình parse được. |
-| Production | HTTPS frontend→API, Auth callback, job run | URL, health, browser E2E và log đã lọc secrets. |
+| Build | Typecheck/build frontend, backend, worker | PASS trong CI Linux và kiểm tra local. |
+| Auth | Signup, email confirm, login, wrong password, logout, protected route | PASS E2E Supabase local; SMTP/tài khoản production còn chờ cấu hình. |
+| Ownership | A không truy cập B qua Express và REST | PASS bằng JWT thật và SQL/RLS probes. |
+| Habits | Create/edit/soft-delete, validation, pause/resume | PASS API + browser và SQL lịch sử. |
+| Check-in | Duplicate/concurrent, undo, today-only, streak và timezone | PASS SQL/RPC/REST, 12 request concurrent và browser khác timezone. |
+| Dashboard | Bảy ngày, mẫu số lịch sử, zero state | PASS API/browser/SQL theo dữ liệu fixture xác định. |
+| Worker | Success/retry/401/timeout/cursor/SIGTERM | PASS 10 tests, internal API replay và actual Compose request. |
+| SQL | Unique, RLS, grants, DATE và composite ownership | PASS project thật rollback và Supabase local CI. |
+| Docker | Ba image build, Compose start, health/network, worker→DB | PASS runtime thật trên GitHub Linux runner. |
+| Production | HTTPS login/BFF/API health, anonymous rejection | PASS public smoke; full authenticated flow và scheduled job còn chờ Dashboard. |
 
 ## Trở ngại triển khai cần cấu hình thật
 
-- Push/CI và repository secrets trên GitHub; quyền liên kết Vercel/Render. Repository public đã tạo, không còn là trở ngại tạo repository.
+- Repository secrets/variables cho scheduled worker trên GitHub. CI cuối đã xanh; repository public, push, frontend Vercel và backend Render đã hoạt động. Git integration Vercel cần quyền repository để auto deploy.
 - Service-role key đặt bằng Dashboard/secret store ở backend; không yêu cầu người dùng dán bí mật vào chat/source.
 - SMTP/Auth redirect URLs cho signup sử dụng thật. Nếu email bị giới hạn, báo đúng bước chưa kiểm chứng.
-- Docker engine nếu môi trường chỉ có CLI hoặc không có Docker; không báo Compose runtime thành công khi chưa chạy được.
+- Docker runtime đã kiểm chứng trên Linux CI; nếu muốn chạy Compose ngay trên máy cá nhân, vẫn cần cài/chạy Docker engine ở máy đó.
 
 Sau khi có quyền/cấu hình, hoàn tất các bước chưa được xác minh, cập nhật kết quả với lệnh/URL thực tế và các giới hạn còn lại. Không cần thiết kế thêm tính năng để vượt qua trở ngại hạ tầng.

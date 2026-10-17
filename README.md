@@ -2,6 +2,10 @@
 
 Ứng dụng theo dõi thói quen hằng ngày, ưu tiên điện thoại: Next.js App Router, Express, Supabase PostgreSQL/Auth và worker Node.js độc lập. Dự án sử dụng Supabase `zqbezrlrijxyealjefsi`; project ID và publishable/anon key là thông tin công khai, service-role key và service API key là bí mật.
 
+Source công khai: [quangtrung6148/habit-tracker](https://github.com/quangtrung6148/habit-tracker).
+
+Ứng dụng: [habit-tracker-lime-xi.vercel.app](https://habit-tracker-lime-xi.vercel.app). API: [health check](https://habit-tracker-api-0lnr.onrender.com/health). Frontend và backend đã triển khai; đăng ký/xác nhận email và worker production cần cấu hình Dashboard còn lại trong [deployment-plan](docs/deployment-plan.md).
+
 ## Chức năng
 
 - Đăng ký email/mật khẩu, đăng nhập, đăng xuất và duy trì phiên qua cookie SSR.
@@ -65,6 +69,8 @@ npm --prefix worker run build
 
 Ma trận kiểm chứng và trạng thái thực tế được cập nhật trong [deployment-plan](docs/deployment-plan.md). Test đơn vị không thay thế kiểm tra Auth/RLS với hai tài khoản trên Supabase, Docker runtime hoặc E2E production.
 
+[CI đã qua toàn bộ](https://github.com/quangtrung6148/habit-tracker/actions/runs/39037069363): 26 backend tests, 10 worker tests, ba smoke scenarios, SQL/RLS/timezone integration, đăng ký và email xác nhận thật trên Supabase local, luồng browser đầy đủ, ba Docker builds và Compose runtime gồm worker→backend→database. Production hiện đã qua public login/API smoke; email/tài khoản production và scheduled worker còn chờ Dashboard.
+
 ## Triển khai
 
 - Frontend: Vercel, root `frontend`, `API_INTERNAL_URL` trỏ HTTPS tới Render.
@@ -74,7 +80,7 @@ Ma trận kiểm chứng và trạng thái thực tế được cập nhật tro
 
 Không commit `.env.local`, service-role key, service API key, access token, `node_modules` hoặc build artifacts. Chỉ backend internal summary dùng service role; request người dùng chạy bằng JWT người dùng và chịu RLS. Cấu hình môi trường theo từng dịch vụ, không sao chép toàn bộ `.env` sang một nơi.
 
-Chưa thể coi ứng dụng đã triển khai chỉ vì source build thành công. Cần quyền tạo repository GitHub public, kết nối Vercel/Render, cấu hình SMTP/Auth, service-role key trong backend và secrets worker. Chi tiết: [deployment-plan](docs/deployment-plan.md).
+Frontend Vercel và backend Render đã được kiểm chứng public. Luồng đăng nhập có tài khoản thật/xác nhận email và worker production còn cần SMTP/Auth redirect URLs, service-role key trong backend và secrets worker. Vercel đã deploy source bằng CLI; auto deploy từ GitHub cần cấp quyền repository cho integration. Chi tiết: [deployment-plan](docs/deployment-plan.md).
 
 ## Tài liệu
 

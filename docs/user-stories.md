@@ -7,7 +7,7 @@
 | PROFILE-1 | Tôi muốn chọn ngày nghiệp vụ phù hợp. | Chọn IANA timezone khi thiết lập, mặc định HCM; thông báo chọn một lần; Hồ sơ hiển thị timezone, không có sửa. |
 | HABIT-1 | Tôi muốn tạo và sửa thói quen hằng ngày. | Tiêu đề bắt buộc, giới hạn trường rõ; màu/icon hợp lệ; thói quen mới check-in ngay hôm nay; sửa không đổi lịch sử cũ. |
 | HABIT-2 | Tôi muốn tạm dừng rồi tiếp tục. | Có bộ lọc đang hoạt động/tạm dừng; tác động hôm nay; hoàn thành mới bị chặn khi tạm dừng nhưng undo hôm nay được phép; complete→pause→resume trong một ngày vẫn complete nếu không undo. |
-| HABIT-3 | Tôi muốn xóa thói quen không còn dùng. | Xác nhận trước khi xóa; giải thích giữ thống kê trước đây; biến mất khỏi danh sách; không sửa/check-in lại. |
+| HABIT-3 | Tôi muốn xóa thói quen không còn dùng. | Xác nhận trước khi xóa; giải thích giữ thống kê trước đây; biến mất khỏi danh sách; modal hiện tại giữ lịch sử đến khi người dùng đóng; không sửa/check-in lại. |
 | CHECK-1 | Tôi muốn hoàn thành hoặc bỏ hoàn thành hôm nay. | Có nút trên thẻ; request trùng/concurrent không tạo bản ghi trùng; undo chỉ hôm nay; phản hồi lỗi khôi phục UI đúng dữ liệu server. |
 | CHECK-2 | Tôi muốn thấy chuỗi nỗ lực. | Current/longest đúng; unfinished today vẫn giữ chuỗi hôm qua; missed whole day ngắt chuỗi; pause không freeze; undo tính lại. |
 | DASH-1 | Tôi muốn biết tiến độ hôm nay và tuần gần nhất. | Tổng hoạt động, hoàn thành, tỷ lệ, streak, bảy ngày đúng; không chia 0; cập nhật sau thao tác; ngày cũ không bị sửa bởi pause/delete hôm nay. |
