@@ -46,6 +46,8 @@ Không tạo paid instance, paid cron hay paid worker. Không tự nâng plan kh
 
 ## Worker production
 
+Repository variable `BACKEND_URL` đã được cấu hình thành `https://habit-tracker-api-0lnr.onrender.com`. Lần kiểm tra gần nhất chưa có repository secret `SERVICE_API_KEY` và backend vẫn báo `worker_configured:false`; lịch chưa được bật. Hoàn tất khóa ở Render/GitHub trước khi đặt `DAILY_SUMMARY_ENABLED=true`.
+
 GitHub Actions chạy phút 23 mỗi giờ và hỗ trợ workflow_dispatch. Chỉ bật khi repository variable `DAILY_SUMMARY_ENABLED=true`; mặc định chưa chạy. Checkout → Node22 → `npm ci` trong worker → build → `node dist/index.js --once`. Job concurrency một nhóm, không cancel lượt đang chạy; giới hạn 30 phút và quyền repository `contents:read`. Repository variable `BACKEND_URL` phải là HTTPS origin, repository secret `SERVICE_API_KEY` riêng; không echo khóa.
 
 CI trong `.github/workflows/ci.yml` cài ba ứng dụng từ lockfile, secret scan, test/typecheck/build; khởi động Supabase local CLI 2.121.0 với migrations, SQL integration và kiểm thử Auth/API/browser thật, sau đó build ba Docker image và chạy Compose. CI dùng khóa fixture local, mask trước khi xuất môi trường, không dùng khóa project thật. Run thành công được dẫn ở phần Trạng thái.
