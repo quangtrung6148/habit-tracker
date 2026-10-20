@@ -246,27 +246,31 @@ async function testBrowser(chromium, expect) {
   assert.equal((await signup.json()).data.confirmationRequired, true, 'local signup must require real email confirmation');
   await rememberBrowserUser();
   await expect(page.getByRole('heading', { name: 'Kiểm tra email nhé!' })).toBeVisible();
-  let meAttempts = 0;
+  await page.goto(await emailConfirmation());
+  await expect(page.getByRole('heading', { name: 'Một ngày của bạn bắt đầu ở đâu?' })).toBeVisible();
+  await page.getByLabel('Múi giờ', { exact: true }).fill('Asia/Ho_Chi_Minh');
+  await page.getByRole('checkbox').check();
+  // Inject the failure into the explicit post-setup load. Development Strict
+  // Mode may run mount effects twice, so mount request totals are not a retry
+  // contract and must not be used to assert the retry count.
+  let summaryAttempts = 0;
   let releaseFirstRead;
   const firstReadGate = new Promise(resolve => { releaseFirstRead = resolve; });
-  const meRoute = '**/api/v1/auth/me';
-  await page.route(meRoute, async route => {
-    meAttempts++;
-    if (meAttempts === 1) {
+  const summaryRoute = '**/api/v1/dashboard/summary';
+  await page.route(summaryRoute, async route => {
+    summaryAttempts++;
+    if (summaryAttempts === 1) {
       await firstReadGate;
       await route.fulfill({ status: 503, contentType: 'application/json', body: JSON.stringify({ success: false, data: null, message: 'Đang kết nối.', error: { code: 'UPSTREAM_ERROR' } }) });
     } else await route.continue();
   });
-  await page.goto(await emailConfirmation());
+  await page.getByRole('button', { name: 'Sẵn sàng bắt đầu', exact: true }).click();
   await expect(page.getByRole('status').filter({ hasText: 'Đang tải dữ liệu của bạn' })).toBeVisible();
   await page.evaluate(() => document.dispatchEvent(new Event('visibilitychange')));
   releaseFirstRead();
-  await expect(page.getByRole('heading', { name: 'Một ngày của bạn bắt đầu ở đâu?' })).toBeVisible();
-  assert.equal(meAttempts, 2, 'browser must recover from one transient read failure without manual retry');
-  await page.unroute(meRoute);
-  await page.getByLabel('Múi giờ', { exact: true }).fill('Asia/Ho_Chi_Minh');
-  await page.getByRole('checkbox').check();
-  await page.getByRole('button', { name: 'Sẵn sàng bắt đầu', exact: true }).click();
+  await expect(page.getByRole('heading', { name: 'Nhịp điệu 7 ngày' })).toBeVisible();
+  assert.equal(summaryAttempts, 2, 'browser must recover from one transient read failure without manual retry');
+  await page.unroute(summaryRoute);
   await expect(page.getByRole('button', { name: 'Thêm thói quen', exact: true })).toBeEnabled();
   const csrf = await page.request.post(`${frontendUrl}/api/v1/profile`, { headers: { Origin: 'https://untrusted.example' }, data: { timezone: 'UTC' } });
   assert.equal(csrf.status(), 403, 'cookie-authenticated mutation must reject a foreign Origin');
