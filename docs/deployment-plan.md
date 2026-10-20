@@ -11,7 +11,7 @@
 - Render Free/Singapore: deployment `dep-dbbjsgs9v7es73ffutg0` **LIVE**, `/health` trả 200 và `worker_configured:true` sau khi cấu hình đủ hai biến worker.
 - Khóa worker đã đổi đồng bộ GitHub/Render theo chấp thuận của người dùng; runtime trả 401 khi thiếu khóa, sai khóa và dùng khóa cũ. Chương trình worker thật chạy `--once` trên production thành công, không xuất giá trị khóa.
 - Đã bật `DAILY_SUMMARY_ENABLED=true`; [job production đầu tiên](https://github.com/quangtrung6148/habit-tracker/actions/runs/39406688771) từ GitHub Actions **SUCCESS**. Số xử lý 0 là đúng: database có một profile nhưng chưa có ngày địa phương đã đóng. Lịch chạy phút 23 mỗi giờ; dispatch thành công không bảo đảm scheduler luôn đúng giờ.
-- Vercel đã nối `quangtrung6148/habit-tracker` vào project hiện có, production branch `main`; không tạo project trùng. Đang kiểm chứng push mới phát sinh deployment tự động.
+- Vercel đã nối `quangtrung6148/habit-tracker` vào project hiện có, production branch `main`; không tạo project trùng. Push `1edcfd582032db86b611f926712941e324113b66` tự tạo deployment `dpl_7HzUEEiqB8SSHgDw3KDFjEEgVkvz`, `source:git`, target production, **READY** và đã nhận domain chính. Public smoke sau auto deploy vẫn qua, backend báo worker sẵn sàng.
 - Người dùng chưa có SMTP riêng; đăng ký/xác nhận email công khai vẫn chưa nghiệm thu.
 
 ### Hoàn tất các bước cần Dashboard
@@ -41,7 +41,7 @@ Các email/tài khoản integration chỉ ở Supabase local trong CI, không ph
 
 ## Production đã kiểm chứng
 
-- Vercel deployment hiện tại `dpl_BCprfGCusRBwmN9zy1SMeG2MAyqy` READY tại [habit-tracker-lime-xi.vercel.app](https://habit-tracker-lime-xi.vercel.app); đã thay bản gốc `dpl_5Vm7fAJxVe89J7VmYiP7W84jKn11` sau kiểm chứng ngày 20/10.
+- Vercel deployment hiện tại `dpl_7HzUEEiqB8SSHgDw3KDFjEEgVkvz` READY tại [habit-tracker-lime-xi.vercel.app](https://habit-tracker-lime-xi.vercel.app), tự build qua Git từ commit `1edcfd582032db86b611f926712941e324113b66`. Source ứng dụng không đổi so với bản sửa đã kiểm chứng; các commit sau chỉ cập nhật tài liệu vận hành.
 - Render Free Web Service `srv-db9ncqbbc2fs73chtdbg`, deployment `dep-dbbjsgs9v7es73ffutg0` LIVE tại [habit-tracker-api-0lnr.onrender.com](https://habit-tracker-api-0lnr.onrender.com/health).
 - Browser production: login page 200, nhập sai mật khẩu trả 400 qua Auth Vercel→Supabase, không overflow mobile hoặc pageerror; BFF Origin guard trả 403.
 - API production: `/health` 200 và `worker_configured:true`; anonymous protected endpoint 401. Worker `--once` local và GitHub Actions đã thành công; khóa cũ bị từ chối 401.
@@ -49,7 +49,7 @@ Các email/tài khoản integration chỉ ở Supabase local trong CI, không ph
 
 Render được tạo qua API tool chưa hỗ trợ rootDir/healthCheckPath: service thực tế dùng root repository, build `npm ci --prefix backend && npm run build --prefix backend` với `NPM_CONFIG_INCLUDE=dev`, start `npm start --prefix backend`; provider dùng TCP health, đồng thời `/health` đã probe 200. `render.yaml` là cấu hình chuẩn root `backend`, build include dev và `/health`, đã chuẩn bị nhưng chưa được attach/sync vào service thực tế. Không nói service đang do Blueprint quản lý.
 
-Vercel đã nối đúng repository sau khi cấp quyền GitHub App. Deployment CLI đã được kiểm chứng và promote; push mới được dùng để kiểm tra deployment qua Git, thay vì coi trạng thái liên kết là đủ bằng chứng.
+Vercel đã nối đúng repository sau khi cấp quyền GitHub App. Đã kiểm chứng push mới tạo deployment qua Git đúng commit, build READY và tự gán domain production; không chỉ dựa vào trạng thái liên kết.
 
 ## Supabase
 
