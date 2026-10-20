@@ -7,7 +7,7 @@
     "install:apps": "npm ci --prefix backend && npm ci --prefix frontend && npm ci --prefix worker",
     "build": "npm run build --prefix backend && npm run build --prefix frontend && npm run build --prefix worker",
     "typecheck": "npm run typecheck --prefix backend && npm run typecheck --prefix frontend && npm run typecheck --prefix worker",
-    "test": "npm test --prefix backend && npm test --prefix worker",
+    "test": "npm test --prefix backend && npm test --prefix frontend && npm test --prefix worker",
     "dev:frontend": "npm run dev --prefix frontend",
     "dev:backend": "npm run dev --prefix backend",
     "dev:worker": "npm run dev --prefix worker",

@@ -246,8 +246,24 @@ async function testBrowser(chromium, expect) {
   assert.equal((await signup.json()).data.confirmationRequired, true, 'local signup must require real email confirmation');
   await rememberBrowserUser();
   await expect(page.getByRole('heading', { name: 'Kiểm tra email nhé!' })).toBeVisible();
+  let meAttempts = 0;
+  let releaseFirstRead;
+  const firstReadGate = new Promise(resolve => { releaseFirstRead = resolve; });
+  const meRoute = '**/api/v1/auth/me';
+  await page.route(meRoute, async route => {
+    meAttempts++;
+    if (meAttempts === 1) {
+      await firstReadGate;
+      await route.fulfill({ status: 503, contentType: 'application/json', body: JSON.stringify({ success: false, data: null, message: 'Đang kết nối.', error: { code: 'UPSTREAM_ERROR' } }) });
+    } else await route.continue();
+  });
   await page.goto(await emailConfirmation());
+  await expect(page.getByRole('status').filter({ hasText: 'Đang tải dữ liệu của bạn' })).toBeVisible();
+  await page.evaluate(() => document.dispatchEvent(new Event('visibilitychange')));
+  releaseFirstRead();
   await expect(page.getByRole('heading', { name: 'Một ngày của bạn bắt đầu ở đâu?' })).toBeVisible();
+  assert.equal(meAttempts, 2, 'browser must recover from one transient read failure without manual retry');
+  await page.unroute(meRoute);
   await page.getByLabel('Múi giờ', { exact: true }).fill('Asia/Ho_Chi_Minh');
   await page.getByRole('checkbox').check();
   await page.getByRole('button', { name: 'Sẵn sàng bắt đầu', exact: true }).click();
@@ -259,9 +275,28 @@ async function testBrowser(chromium, expect) {
   let dialog = page.getByRole('dialog');
   await dialog.getByLabel(/Tên thói quen/).fill(title); await dialog.getByLabel(/Mô tả/).fill('Một bước nhỏ trong bài kiểm thử thật.');
   const creation = page.waitForResponse(response => new URL(response.url()).pathname === '/api/v1/habits' && response.request().method() === 'POST');
+  let creationRequests = 0;
+  let committedStatus;
+  await page.route('**/api/v1/habits', async route => {
+    if (route.request().method() !== 'POST') return route.continue();
+    creationRequests++;
+    const committed = await route.fetch();
+    committedStatus = committed.status();
+    await route.fulfill({ status: 503, contentType: 'application/json', body: JSON.stringify({ success: false, data: null, message: 'Không thể truy cập dữ liệu. Vui lòng thử lại.', error: { code: 'DATABASE_UNAVAILABLE' } }) });
+  });
   await dialog.getByRole('button', { name: 'Tạo thói quen', exact: true }).click();
-  assert.equal((await creation).status(), 201, 'browser habit creation');
+  assert.equal((await creation).status(), 503, 'simulate lost confirmation after a committed write');
+  assert.equal(committedStatus, 201, 'the habit must actually commit before its response is replaced');
+  await expect(page.getByRole('dialog')).toHaveCount(0);
+  const uncertain = page.getByRole('alert').filter({ hasText: 'Chưa xác nhận được kết quả thao tác' });
+  await expect(uncertain).toBeVisible();
+  await uncertain.getByRole('button', { name: 'Thử lại', exact: true }).click();
   await expect(page.getByRole('button', { name: `Hoàn thành ${title}`, exact: true })).toBeVisible();
+  assert.equal(creationRequests, 1, 'lost confirmation must not resubmit the mutation');
+  const verifiedHabits = await page.request.get(`${frontendUrl}/api/v1/habits?status=all&page=1&limit=20`);
+  assert.equal(verifiedHabits.status(), 200);
+  assert.equal((await verifiedHabits.json()).data.pagination.total, 1, 'verification must find exactly one committed habit');
+  await page.unroute('**/api/v1/habits');
   await page.getByRole('button', { name: `Hoàn thành ${title}`, exact: true }).click();
   await expect(page.getByRole('button', { name: `Bỏ hoàn thành ${title}`, exact: true })).toHaveAttribute('aria-pressed', 'true');
   await page.getByRole('button', { name: `Bỏ hoàn thành ${title}`, exact: true }).click();

@@ -1,5 +1,23 @@
 # Triển khai và kiểm chứng
 
+## Đợt ổn định ngày 20/10/2026
+
+- Frontend chỉ tự thử lại GET khi lỗi mạng/timeout hoặc HTTP 408/502/503/504: tối đa ba lượt, timeout 45 giây/lượt, chờ 1 rồi 2 giây. POST/PATCH/DELETE không tự gửi lại; khi mất kết nối, người dùng được hướng dẫn tải lại dữ liệu để xác minh kết quả.
+- HTML, JSON hỏng hoặc envelope sai từ upstream được chuyển thành lỗi máy chủ an toàn 502 (giữ 408/502/503/504 nếu có). JSON body sai do client vẫn là 400 `INVALID_JSON`; lỗi validation/xác thực hợp lệ từ backend được giữ nguyên. Trạng thái tải có thông báo bằng chữ.
+- Local: 49 tests qua (26 backend, 13 frontend, 10 worker), typecheck ba ứng dụng và build cả ba ứng dụng qua, secret scan qua. Browser recovery được bổ sung vào harness Supabase local; chưa coi là đã chạy cho đến khi CI xác nhận.
+- Review bổ sung: lượt tải tự động từ interval/visibility không chồng lên lượt đang chạy. Khi mutation có thể đã commit nhưng kết quả chưa xác nhận (HTTP 408/5xx hoặc mất kết nối), UI hướng dẫn kiểm tra dữ liệu và đóng modal tạo/sửa để nút tải lại truy cập được. Harness mô phỏng POST commit 201 nhưng phản hồi tới browser là 503, xác minh chỉ tạo một habit.
+- Kiểm tra vận hành: Render đang Free/Singapore và auto deploy theo commit `main`. Vercel chưa có Git link; CLI kết nối `quangtrung6148/habit-tracker` thất bại vì chưa truy cập được repository. Không tạo project trùng.
+- GitHub hiện có variable `BACKEND_URL`, không có repository secret và chưa có `DAILY_SUMMARY_ENABLED`. Worker production chưa đủ điều kiện bật. Người dùng xác nhận chưa có SMTP; đăng ký công khai chưa nghiệm thu.
+
+### Hoàn tất các bước cần Dashboard
+
+1. Git: mở [Vercel Git settings](https://vercel.com/rannn/habit-tracker/settings/git), kết nối repository `quangtrung6148/habit-tracker`. Nếu cần, cấp quyền repository cho ứng dụng Vercel trong [GitHub installations](https://github.com/settings/installations). Xác nhận một push mới tạo deployment đúng commit trước khi đánh dấu auto deploy hoàn tất.
+2. Worker: trong [Render Environment](https://dashboard.render.com/web/srv-db9ncqbbc2fs73chtdbg/env), đặt `SUPABASE_SERVICE_ROLE_KEY` và `SERVICE_API_KEY` ngẫu nhiên ít nhất 32 ký tự. Lấy service-role key từ Supabase Dashboard, không đặt ở frontend. Lưu và deploy; `/health` phải báo `worker_configured:true`.
+3. Đặt cùng `SERVICE_API_KEY` tại [GitHub Actions secrets](https://github.com/quangtrung6148/habit-tracker/settings/secrets/actions). Chưa bật lịch khi backend hoặc secret chưa sẵn sàng. Sau khi cấu hình xong, bật repository variable `DAILY_SUMMARY_ENABLED=true`, chạy workflow thủ công, kiểm tra job thành công và summary được tạo; nếu lỗi thì tắt variable, xử lý rồi chạy lại. Việc bật variable cho phép cả chạy thủ công và lịch mỗi giờ.
+4. Email: cấu hình nhà cung cấp SMTP và địa chỉ gửi đã xác minh tại [Supabase Auth email](https://supabase.com/dashboard/project/zqbezrlrijxyealjefsi/auth/smtp). Kiểm tra Site URL/redirect về origin Vercel, bật xác nhận email; đăng ký bằng hộp thư thật và hoàn tất callback trước khi mở đăng ký công khai. Không coi SMTP mặc định hoặc email thử trong CI là bằng chứng gửi email công khai.
+
+Không dán secret vào chat, commit hay log. Chỉ đánh dấu từng bước sau khi có bằng chứng runtime. Đợt này chưa bổ sung lịch tuần, nhắc nhở hoặc thống kê tháng.
+
 ## Trạng thái
 
 Tài liệu này phân biệt source/config đã chuẩn bị với thao tác runtime và triển khai đã kiểm chứng. Không coi migrations, Auth, RLS, Docker hoặc deployment đã thành công chỉ từ việc tồn tại file.

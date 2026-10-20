@@ -1,6 +1,7 @@
 import { NextRequest } from "next/server";
 import { authConfigured, supabaseServer } from "@/lib/auth";
 import { failure, json, readBody, trustedOrigin } from "@/lib/http";
+import { readApiResponse } from "@/lib/api";
 export const dynamic = "force-dynamic";
 async function handle(
   request: NextRequest,
@@ -50,9 +51,16 @@ async function handle(
       );
     const upstream = new URL(`/api/v1/${path}`, base);
     upstream.search = request.nextUrl.search;
-    const body = ["POST", "PATCH", "DELETE"].includes(request.method)
-      ? JSON.stringify(await readBody(request))
-      : undefined;
+    let body: string | undefined;
+    if (["POST", "PATCH", "DELETE"].includes(request.method)) {
+      try {
+        body = JSON.stringify(await readBody(request));
+      } catch (error) {
+        if (error instanceof SyntaxError)
+          return failure("Dữ liệu không hợp lệ.", 400, "INVALID_JSON");
+        throw error;
+      }
+    }
     const result = await fetch(upstream, {
       method: request.method,
       headers: {
@@ -62,17 +70,15 @@ async function handle(
       body,
       cache: "no-store",
       redirect: "manual",
-      signal: AbortSignal.timeout(120000),
+      signal: AbortSignal.any([request.signal, AbortSignal.timeout(120000)]),
     });
     if (result.status >= 300 && result.status < 400)
       return failure("Kết nối tạm thời gián đoạn.", 502, "UPSTREAM_ERROR");
-    const payload = await result.json();
-    return json(payload, result.status);
+    const { payload, status } = await readApiResponse(result);
+    return json(payload, status);
   } catch (error) {
     if (error instanceof Error && error.message === "BODY_TOO_LARGE")
       return failure("Dữ liệu gửi lên quá lớn.", 413, "BODY_TOO_LARGE");
-    if (error instanceof SyntaxError)
-      return failure("Dữ liệu không hợp lệ.", 400, "INVALID_JSON");
     return failure(
       "Không thể kết nối máy chủ. Vui lòng thử lại.",
       502,

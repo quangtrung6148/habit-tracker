@@ -136,6 +136,10 @@ function HabitForm({
       });
       onClose();
     } catch (err) {
+      if (err instanceof ApiError && err.code === "MUTATION_UNCERTAIN") {
+        onClose();
+        return;
+      }
       setError(
         err instanceof Error ? err.message : "Chưa lưu được. Thử lại nhé.",
       );
@@ -564,6 +568,7 @@ export default function HabitApp({ email }: { email: string }) {
   const [editing, setEditing] = useState<Habit | "new" | null>(null);
   const [selected, setSelected] = useState<Habit | null>(null);
   const requestSequence = useRef(0);
+  const pendingLoads = useRef(0);
   const notify = useCallback((message: string) => setToast(message), []);
   const handleError = useCallback(
     (err: unknown) => {
@@ -585,6 +590,7 @@ export default function HabitApp({ email }: { email: string }) {
   );
   const load = useCallback(
     async (quiet = false) => {
+      pendingLoads.current++;
       const sequence = ++requestSequence.current;
       if (!quiet) setLoading(true);
       setError("");
@@ -606,6 +612,7 @@ export default function HabitApp({ email }: { email: string }) {
       } catch (err) {
         if (sequence === requestSequence.current) handleError(err);
       } finally {
+        pendingLoads.current--;
         if (sequence === requestSequence.current) setLoading(false);
       }
     },
@@ -642,10 +649,10 @@ export default function HabitApp({ email }: { email: string }) {
   }
   useEffect(() => {
     const timer = setInterval(() => {
-      if (document.visibilityState === "visible") void load(true);
+      if (document.visibilityState === "visible" && pendingLoads.current === 0) void load(true);
     }, 60000);
     const visible = () => {
-      if (document.visibilityState === "visible") void load(true);
+      if (document.visibilityState === "visible" && pendingLoads.current === 0) void load(true);
     };
     document.addEventListener("visibilitychange", visible);
     return () => {
@@ -899,13 +906,18 @@ export default function HabitApp({ email }: { email: string }) {
                 )}
               </section>
               {loading && !summary ? (
-                <div
-                  className="dashboard-skeleton"
-                  aria-label="Đang tải dữ liệu"
-                >
-                  <div className="skeleton" />
-                  <div className="skeleton" />
-                  <div className="skeleton" />
+                <div>
+                  <p role="status" className="muted">
+                    Đang tải dữ liệu của bạn. Lần đầu có thể mất một chút thời gian.
+                  </p>
+                  <div
+                    className="dashboard-skeleton"
+                    aria-label="Đang tải dữ liệu"
+                  >
+                    <div className="skeleton" />
+                    <div className="skeleton" />
+                    <div className="skeleton" />
+                  </div>
                 </div>
               ) : !summary || !progress || !list ? (
                 <section className="panel empty-habits">

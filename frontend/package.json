@@ -10,6 +10,7 @@
     "build": "next build",
     "start": "next start --hostname 0.0.0.0",
     "typecheck": "tsc --noEmit",
+    "test": "node --experimental-strip-types --test unit/*.test.mjs",
     "test:e2e": "playwright test"
   },
   "dependencies": {
